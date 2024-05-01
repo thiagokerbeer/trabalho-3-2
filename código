@@ -1,0 +1,145 @@
+-- Criação das tabelas
+CREATE TABLE Usuarios (
+    UsuarioID INT PRIMARY KEY,
+    NomeUsuario VARCHAR(50) NOT NULL,
+    Senha VARCHAR(50) NOT NULL,
+    TipoUsuario VARCHAR(20) NOT NULL
+);
+
+CREATE TABLE Pessoas (
+    PessoaID INT PRIMARY KEY,
+    Tipo VARCHAR(10) NOT NULL,
+    Nome VARCHAR(100) NOT NULL,
+    CPF VARCHAR(14),
+    CNPJ VARCHAR(18),
+    Endereco VARCHAR(200),
+    Telefone VARCHAR(20),
+    Email VARCHAR(100)
+);
+
+CREATE TABLE Produtos (
+    ProdutoID INT PRIMARY KEY,
+    Nome VARCHAR(100) NOT NULL,
+    Quantidade INT NOT NULL,
+    PrecoVenda DECIMAL(10, 2) NOT NULL
+);
+
+CREATE TABLE MovimentosCompra (
+    MovimentoCompraID INT PRIMARY KEY,
+    ProdutoID INT,
+    PessoaJuridicaID INT,
+    Quantidade INT NOT NULL,
+    PrecoUnitario DECIMAL(10, 2) NOT NULL,
+    FOREIGN KEY (ProdutoID) REFERENCES Produtos(ProdutoID),
+    FOREIGN KEY (PessoaJuridicaID) REFERENCES Pessoas(PessoaID)
+);
+
+CREATE TABLE MovimentosVenda (
+    MovimentoVendaID INT PRIMARY KEY,
+    ProdutoID INT,
+    PessoaFisicaID INT,
+    Quantidade INT NOT NULL,
+    FOREIGN KEY (ProdutoID) REFERENCES Produtos(ProdutoID),
+    FOREIGN KEY (PessoaFisicaID) REFERENCES Pessoas(PessoaID)
+);
+
+CREATE TABLE PessoasFisicas (
+    PessoaFisicaID INT PRIMARY KEY,
+    PessoaID INT,
+    CPF VARCHAR(14) NOT NULL,
+    FOREIGN KEY (PessoaID) REFERENCES Pessoas(PessoaID)
+);
+
+CREATE TABLE PessoasJuridicas (
+    PessoaJuridicaID INT PRIMARY KEY,
+    PessoaID INT,
+    CNPJ VARCHAR(18) NOT NULL,
+    FOREIGN KEY (PessoaID) REFERENCES Pessoas(PessoaID)
+);
+
+-- Inserção de dados
+INSERT INTO Usuarios (UsuarioID, NomeUsuario, Senha, TipoUsuario)
+VALUES
+(1, 'op1', 'op1', 'Operador'),
+(2, 'op2', 'op2', 'Operador');
+
+INSERT INTO Pessoas (PessoaID, Tipo, Nome, Endereco, Telefone, Email)
+VALUES
+(1, 'Fisica', 'João da Silva', 'Rua A, 123', '123456789', 'joao@example.com'),
+(2, 'Juridica', 'Empresa ABC Ltda', 'Av. B, 456', '987654321', 'contato@empresaabc.com');
+
+INSERT INTO Produtos (ProdutoID, Nome, Quantidade, PrecoVenda)
+VALUES
+(1, 'Produto A', 10, 50.00),
+(2, 'Produto B', 20, 30.00),
+(3, 'Produto C', 15, 40.00);
+
+DECLARE @ProximoID INT;
+SELECT @ProximoID = ISNULL(MAX(PessoaID), 0) + 1 FROM Pessoas;
+
+INSERT INTO PessoasFisicas (PessoaFisicaID, PessoaID, CPF)
+VALUES
+(@ProximoID, @ProximoID, '123.456.789-01');
+
+INSERT INTO PessoasJuridicas (PessoaJuridicaID, PessoaID, CNPJ)
+VALUES
+(@ProximoID, @ProximoID, '12.345.678/0001-23');
+
+-- Consultas sobre os dados inseridos
+-- 1. Dados completos de pessoas físicas
+SELECT *
+FROM Pessoas
+WHERE Tipo = 'Fisica';
+
+-- 2. Dados completos de pessoas jurídicas
+SELECT *
+FROM Pessoas
+WHERE Tipo = 'Juridica';
+
+-- 3. Movimentações de entrada
+SELECT MC.*, P.Nome AS Produto, PJ.Nome AS Fornecedor, MC.Quantidade, MC.PrecoUnitario, (MC.Quantidade * MC.PrecoUnitario) AS ValorTotal
+FROM MovimentosCompra MC
+JOIN Produtos P ON MC.ProdutoID = P.ProdutoID
+JOIN PessoasJuridicas PJ ON MC.PessoaJuridicaID = PJ.PessoaJuridicaID;
+
+-- 4. Movimentações de saída
+SELECT MV.*, P.Nome AS Produto, PF.Nome AS Comprador, MV.Quantidade, P.PrecoVenda AS PrecoUnitario, (MV.Quantidade * P.PrecoVenda) AS ValorTotal
+FROM MovimentosVenda MV
+JOIN Produtos P ON MV.ProdutoID = P.ProdutoID
+JOIN PessoasFisicas PF ON MV.PessoaFisicaID = PF.PessoaFisicaID;
+
+-- 5. Valor total das entradas agrupadas por produto
+SELECT P.Nome AS Produto, SUM(MC.Quantidade * MC.PrecoUnitario) AS ValorTotalEntradas
+FROM MovimentosCompra MC
+JOIN Produtos P ON MC.ProdutoID = P.ProdutoID
+GROUP BY P.Nome;
+
+-- 6. Valor total das saídas agrupadas por produto
+SELECT P.Nome AS Produto, SUM(MV.Quantidade * P.PrecoVenda) AS ValorTotalSaidas
+FROM MovimentosVenda MV
+JOIN Produtos P ON MV.ProdutoID = P.ProdutoID
+GROUP BY P.Nome;
+
+-- 7. Operadores que não efetuaram movimentações de entrada (compra)
+SELECT *
+FROM Usuarios
+WHERE UsuarioID NOT IN (SELECT DISTINCT UsuarioID FROM MovimentosCompra);
+
+-- 8. Valor total de entrada, agrupado por operador
+SELECT U.NomeUsuario AS Operador, SUM(MC.Quantidade * MC.PrecoUnitario) AS ValorTotalEntrada
+FROM MovimentosCompra MC
+JOIN Usuarios U ON MC.UsuarioID = U.UsuarioID
+GROUP BY U.NomeUsuario;
+
+-- 9. Valor total de saída, agrupado por operador
+SELECT U.NomeUsuario AS Operador, SUM(MV.Quantidade * P.PrecoVenda) AS ValorTotalSaida
+FROM MovimentosVenda MV
+JOIN Produtos P ON MV.ProdutoID = P.ProdutoID
+JOIN Usuarios U ON MV.UsuarioID = U.UsuarioID
+GROUP BY U.NomeUsuario;
+
+-- 10. Valor médio de venda por produto, utilizando média ponderada
+SELECT P.Nome AS Produto, SUM(MV.Quantidade * P.PrecoVenda) / SUM(MV.Quantidade) AS ValorMedioVenda
+FROM MovimentosVenda MV
+JOIN Produtos P ON MV.ProdutoID = P.ProdutoID
+GROUP BY P.Nome;
